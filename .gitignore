@@ -1,2 +1,32 @@
-node_modules
-.DS_Store
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# SSH private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Ansible inventory and generated files
+ansible/inventory/*
+!ansible/inventory/.gitkeep
+*.retry
+
+# Ansible Vault files
+ansible/group_vars/*vault*
+ansible/group_vars/vault*
+vault.yml
+vault.yaml
+vault-password
+vault-password-file
+
+# Terraform state and local files
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Node.js
+node_modules/
+npm-debug.log*
