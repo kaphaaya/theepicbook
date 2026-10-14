@@ -43,9 +43,13 @@ stages:
                     set -euo pipefail
 
                     # Install Ansible if not already present on the agent
+                    # Free pip/apt cache to recover disk space before installing
+                    pip3 cache purge 2>/dev/null || true
+                    sudo apt-get clean 2>/dev/null || true
+
                     if ! command -v ansible &>/dev/null; then
-                      echo "Ansible not found — installing via pip3..."
-                      pip3 install --quiet --break-system-packages ansible
+                      echo "Ansible not found — installing ansible-core via pip3..."
+                      pip3 install --quiet --break-system-packages ansible-core
                       export PATH="$HOME/.local/bin:$PATH"
                       echo "##vso[task.prependpath]$HOME/.local/bin"
                     fi
