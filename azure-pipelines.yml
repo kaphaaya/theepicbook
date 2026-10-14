@@ -45,7 +45,7 @@ stages:
                     # Install Ansible if not already present on the agent
                     if ! command -v ansible &>/dev/null; then
                       echo "Ansible not found — installing via pip3..."
-                      pip3 install --quiet ansible
+                      pip3 install --quiet --break-system-packages ansible
                       export PATH="$HOME/.local/bin:$PATH"
                       echo "##vso[task.prependpath]$HOME/.local/bin"
                     fi
