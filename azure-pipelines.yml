@@ -41,10 +41,18 @@ stages:
 
                 - bash: |
                     set -euo pipefail
+
+                    # Install Ansible if not already present on the agent
+                    if ! command -v ansible &>/dev/null; then
+                      echo "Ansible not found — installing via pip3..."
+                      pip3 install --quiet ansible
+                      export PATH="$HOME/.local/bin:$PATH"
+                      echo "##vso[task.prependpath]$HOME/.local/bin"
+                    fi
+
                     ansible --version | head -1
-                    # Ensure required collections are present (safe to run every time; no-op if already at latest)
                     ansible-galaxy collection install community.mysql community.general -q
-                  displayName: "Verify Ansible and install required collections"
+                  displayName: "Install/verify Ansible and required collections"
 
                 - bash: |
                     set -euo pipefail
