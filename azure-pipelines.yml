@@ -41,15 +41,10 @@ stages:
 
                 - bash: |
                     set -euo pipefail
-                    if ! command -v ansible &>/dev/null; then
-                      echo "Installing Ansible..."
-                      sudo apt-get update -qq
-                      sudo apt-get install -y ansible
-                      # Install community.mysql collection for DB seeding tasks
-                      ansible-galaxy collection install community.mysql community.general --force-with-deps -q
-                    fi
                     ansible --version | head -1
-                  displayName: "Ensure Ansible is installed"
+                    # Ensure required collections are present (safe to run every time; no-op if already at latest)
+                    ansible-galaxy collection install community.mysql community.general -q
+                  displayName: "Verify Ansible and install required collections"
 
                 - bash: |
                     set -euo pipefail
