@@ -1,0 +1,150 @@
+---
+# --------------------------------------------------------------------------
+# System packages
+# --------------------------------------------------------------------------
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install system dependencies
+  ansible.builtin.apt:
+    name:
+      - git
+      - nginx
+      - mysql-client
+      - python3-pymysql
+      - curl
+    state: present
+
+- name: Install Node.js {{ node_version }} LTS via NodeSource
+  ansible.builtin.shell: |
+    curl -fsSL https://deb.nodesource.com/setup_{{ node_version }}.x | bash -
+    apt-get install -y nodejs
+  args:
+    creates: /usr/bin/node
+
+- name: Verify Node.js version
+  ansible.builtin.command: node --version
+  register: node_ver
+  changed_when: false
+
+- name: Display Node.js version
+  ansible.builtin.debug:
+    msg: "Node.js installed: {{ node_ver.stdout }}"
+
+# --------------------------------------------------------------------------
+# Application directory and source code
+# --------------------------------------------------------------------------
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "0755"
+
+- name: Clone or update EpicBook repository
+  ansible.builtin.git:
+    repo: "{{ app_repo }}"
+    dest: "{{ app_dir }}"
+    version: "{{ app_repo_branch }}"
+    force: true
+  become_user: "{{ app_user }}"
+  notify: Restart epicbook
+
+- name: Install Node.js production dependencies
+  community.general.npm:
+    path: "{{ app_dir }}"
+    production: true
+  become_user: "{{ app_user }}"
+  notify: Restart epicbook
+
+# --------------------------------------------------------------------------
+# Environment configuration (.env file, mode 0600, never committed)
+# --------------------------------------------------------------------------
+- name: Deploy application environment file
+  ansible.builtin.template:
+    src: epicbook.env.j2
+    dest: "{{ app_dir }}/.env"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "0600"
+  notify: Restart epicbook
+
+# --------------------------------------------------------------------------
+# Systemd service
+# --------------------------------------------------------------------------
+- name: Deploy epicbook systemd service unit
+  ansible.builtin.template:
+    src: epicbook.service.j2
+    dest: /etc/systemd/system/epicbook.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart epicbook
+
+- name: Enable and start epicbook service
+  ansible.builtin.systemd:
+    name: epicbook
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# --------------------------------------------------------------------------
+# Nginx reverse proxy (port 80 → localhost:8080)
+# --------------------------------------------------------------------------
+- name: Deploy Nginx reverse-proxy configuration
+  ansible.builtin.template:
+    src: epicbook_nginx.conf.j2
+    dest: /etc/nginx/sites-available/epicbook
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable epicbook Nginx site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/epicbook
+    dest: /etc/nginx/sites-enabled/epicbook
+    state: link
+  notify: Reload nginx
+
+- name: Remove default Nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Ensure Nginx is enabled and running
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started
+
+# --------------------------------------------------------------------------
+# Optional: seed database (run once on first deploy)
+# --------------------------------------------------------------------------
+- name: Seed author data
+  community.mysql.mysql_db:
+    name: "{{ db_name }}"
+    state: import
+    target: "{{ app_dir }}/db/author_seed.sql"
+    login_host: "{{ mysql_host }}"
+    login_user: "{{ db_admin_username }}"
+    login_password: "{{ db_admin_password }}"
+    login_port: 3306
+  when: seed_database | bool
+
+- name: Seed book data
+  community.mysql.mysql_db:
+    name: "{{ db_name }}"
+    state: import
+    target: "{{ app_dir }}/db/books_seed.sql"
+    login_host: "{{ mysql_host }}"
+    login_user: "{{ db_admin_username }}"
+    login_password: "{{ db_admin_password }}"
+    login_port: 3306
+  when: seed_database | bool

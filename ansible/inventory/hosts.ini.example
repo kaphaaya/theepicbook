@@ -1,0 +1,5 @@
+# This file is an example. The pipeline generates the real hosts.ini at runtime
+# using the VM public IP from Terraform outputs. hosts.ini is gitignored.
+#
+# [epicbook_servers]
+# 1.2.3.4 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/epicbook_vm_key.pem

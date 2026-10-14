@@ -12,6 +12,7 @@
 # Ansible inventory and generated files
 ansible/inventory/*
 !ansible/inventory/.gitkeep
+!ansible/inventory/*.example
 *.retry
 
 # Ansible Vault files

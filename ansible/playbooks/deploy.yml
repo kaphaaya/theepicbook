@@ -1,0 +1,22 @@
+---
+# EpicBook Application Deployment Playbook
+#
+# Required extra-vars (passed by the pipeline, never hardcoded):
+#   db_admin_password   — MySQL Flexible Server admin password
+#   mysql_host          — Azure MySQL Flexible Server FQDN
+#
+# Optional extra-vars:
+#   seed_database=true  — run on first deploy to load author + book seed data
+
+- name: Deploy EpicBook to Azure VM
+  hosts: epicbook_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    # Build the JAWSDB_URL from parts so the password is never in plaintext in
+    # any file committed to the repository.
+    jawsdb_url: "mysql://{{ db_admin_username }}:{{ db_admin_password }}@{{ mysql_host }}:3306/{{ db_name }}"
+
+  roles:
+    - epicbook

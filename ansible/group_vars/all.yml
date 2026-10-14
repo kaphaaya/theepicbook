@@ -1,0 +1,19 @@
+---
+# Non-secret defaults for all EpicBook hosts.
+# Secret values (db_admin_password, jawsdb_url) are passed as
+# pipeline extra-vars and never stored here.
+
+app_user: ubuntu
+app_group: ubuntu
+app_dir: /opt/epicbook
+app_repo: https://github.com/kaphaaya/theepicbook.git
+app_repo_branch: main
+app_port: 8080
+node_version: "20"
+
+db_name: bookstore
+db_admin_username: epicbookadmin
+
+# Set to true on the first deployment to load author + book seed data.
+# After the initial seed, leave false to avoid duplicate rows.
+seed_database: false

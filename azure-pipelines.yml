@@ -1,0 +1,85 @@
+# EpicBook — Application Deployment Pipeline
+# Deploys the Node.js application to the Azure VM using Ansible.
+# Triggers on every push to main (excluding documentation and infra changes).
+#
+# Required pipeline variables (set in Azure DevOps → Pipelines → Variables):
+#   VM_PUBLIC_IP         — public IP of the Azure VM (from infra pipeline outputs)
+#   MYSQL_HOST           — FQDN of the MySQL Flexible Server (from infra pipeline outputs)
+#   DB_ADMIN_PASSWORD    — MySQL admin password (mark as secret)
+#   DB_ADMIN_USERNAME    — MySQL admin username (default: epicbookadmin)
+#
+# The SSH private key for the VM must exist on the agent at:
+#   $(Agent.HomeDirectory)/.ssh/epicbook_vm_key.pem
+# with permissions 0600. See SETUP.md for one-time agent setup steps.
+#
+# Set seed_database=true as an extra variable on the first deployment only.
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - README.md
+      - "Installation & Configuration Guide.md"
+
+pool: SelfHostedPool
+
+stages:
+
+  - stage: Deploy
+    displayName: "Deploy EpicBook Application"
+    jobs:
+      - deployment: DeployApp
+        displayName: "Ansible deploy to Azure VM"
+        environment: "epicbook-production"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - bash: |
+                    set -euo pipefail
+                    mkdir -p ansible/inventory
+
+                    cat > ansible/inventory/hosts.ini <<EOF
+                    [epicbook_servers]
+                    $(VM_PUBLIC_IP) ansible_user=$(DB_ADMIN_USERNAME_FOR_SSH) ansible_ssh_private_key_file=$(Agent.HomeDirectory)/.ssh/epicbook_vm_key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+                    EOF
+
+                    echo "Generated inventory:"
+                    cat ansible/inventory/hosts.ini
+                  displayName: "Generate Ansible inventory"
+                  env:
+                    DB_ADMIN_USERNAME_FOR_SSH: "ubuntu"
+
+                - bash: |
+                    set -euo pipefail
+
+                    ansible-playbook ansible/playbooks/deploy.yml \
+                      --inventory ansible/inventory/hosts.ini \
+                      --extra-vars "db_admin_username=$(DB_ADMIN_USERNAME) \
+                                    db_admin_password=$(DB_ADMIN_PASSWORD) \
+                                    mysql_host=$(MYSQL_HOST)" \
+                      --diff
+                  displayName: "Run Ansible deployment playbook"
+                  env:
+                    ANSIBLE_HOST_KEY_CHECKING: "False"
+                    ANSIBLE_STDOUT_CALLBACK: "yaml"
+                    DB_ADMIN_USERNAME: "$(DB_ADMIN_USERNAME)"
+                    DB_ADMIN_PASSWORD: "$(DB_ADMIN_PASSWORD)"
+                    MYSQL_HOST: "$(MYSQL_HOST)"
+
+                - bash: |
+                    echo "Waiting 15 seconds for service to start..."
+                    sleep 15
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$(VM_PUBLIC_IP)/" || echo "000")
+                    echo "HTTP status: $STATUS"
+                    if [ "$STATUS" = "200" ]; then
+                      echo "Deployment verified — EpicBook is responding on port 80."
+                    else
+                      echo "Warning: expected 200, got $STATUS. Check nginx and epicbook service logs on the VM."
+                      exit 1
+                    fi
+                  displayName: "Smoke test — HTTP 200 on port 80"
