@@ -65,14 +65,14 @@ stages:
             displayName: 'Install Ansible'
 
           # The SSH private key must be uploaded to Azure DevOps as a Secure File
-          # named 'epicbook_ssh_key.pem' (Project Settings → Pipelines → Library →
+          # named 'epicbook-keypair.pem' (Project Settings → Pipelines → Library →
           # Secure Files).  It is the private key matching the SSH_PUBLIC_KEY used
           # by Terraform when provisioning the EC2 instances.
           - task: DownloadSecureFile@1
             name: sshKey
             displayName: 'Download SSH private key'
             inputs:
-              secureFile: 'epicbook_ssh_key.pem'
+              secureFile: 'epicbook-keypair.pem'
 
           - script: chmod 600 $(sshKey.secureFilePath)
             displayName: 'Set SSH key permissions'
@@ -117,7 +117,7 @@ stages:
                   name: sshKey
                   displayName: 'Download SSH private key'
                   inputs:
-                    secureFile: 'epicbook_ssh_key.pem'
+                    secureFile: 'epicbook-keypair.pem'
 
                 - script: chmod 600 $(sshKey.secureFilePath)
                   displayName: 'Set SSH key permissions'
