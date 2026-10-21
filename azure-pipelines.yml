@@ -11,6 +11,8 @@ variables:
     value: sg-09352e5675dc28ccc
   - name: backendSG
     value: sg-0efee5a13524184ba
+  - name: awsRegion
+    value: eu-north-1
 
 stages:
 
@@ -78,6 +80,14 @@ stages:
             displayName: 'Set SSH key permissions'
 
           - script: |
+              aws sts get-caller-identity
+            displayName: 'Verify AWS credentials'
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_DEFAULT_REGION: $(awsRegion)
+
+          - script: |
               AGENT_IP=$(curl -sf https://checkip.amazonaws.com)
               echo "Agent IP: $AGENT_IP"
               echo "##vso[task.setvariable variable=AGENT_IP]$AGENT_IP"
@@ -91,7 +101,7 @@ stages:
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_DEFAULT_REGION: $(AWS_DEFAULT_REGION)
+              AWS_DEFAULT_REGION: $(awsRegion)
 
           - script: |
               ansible all \
@@ -112,7 +122,7 @@ stages:
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_DEFAULT_REGION: $(AWS_DEFAULT_REGION)
+              AWS_DEFAULT_REGION: $(awsRegion)
 
   # ── Stage 3: Deploy ────────────────────────────────────────────────────────
   # Run the full site.yml playbook.  Uses a deployment job so an Azure DevOps
@@ -166,7 +176,7 @@ stages:
                   env:
                     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
                     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-                    AWS_DEFAULT_REGION: $(AWS_DEFAULT_REGION)
+                    AWS_DEFAULT_REGION: $(awsRegion)
 
                 - script: |
                     ansible-playbook $(ansibleDirectory)/site.yml \
@@ -187,7 +197,7 @@ stages:
                   env:
                     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
                     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-                    AWS_DEFAULT_REGION: $(AWS_DEFAULT_REGION)
+                    AWS_DEFAULT_REGION: $(awsRegion)
 
   # ── Stage 4: Verify ────────────────────────────────────────────────────────
   # Simple HTTP smoke test: confirm the frontend returns an HTML page that
