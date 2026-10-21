@@ -7,6 +7,10 @@ variables:
   - group: epicbook-secrets   # provides DB_ADMIN_PASSWORD, DB_ADMIN_USERNAME
   - name: ansibleDirectory
     value: ansible
+  - name: frontendSG
+    value: sg-09352e5675dc28ccc
+  - name: backendSG
+    value: sg-0efee5a13524184ba
 
 stages:
 
@@ -48,8 +52,8 @@ stages:
             displayName: 'Ansible syntax check'
 
   # ── Stage 2: Connectivity ─────────────────────────────────────────────────
-  # Download the SSH private key from Azure DevOps Secure Files and verify
-  # that both EC2 hosts are reachable via Ansible ping.
+  # Temporarily authorize the agent IP in both EC2 security groups, verify
+  # SSH reachability via Ansible ping, then revoke the rule.
   - stage: Connectivity
     displayName: 'Connectivity'
     dependsOn: Validate
@@ -64,10 +68,6 @@ stages:
           - script: pip install --quiet ansible
             displayName: 'Install Ansible'
 
-          # The SSH private key must be uploaded to Azure DevOps as a Secure File
-          # named 'epicbook-keypair.pem' (Project Settings → Pipelines → Library →
-          # Secure Files).  It is the private key matching the SSH_PUBLIC_KEY used
-          # by Terraform when provisioning the EC2 instances.
           - task: DownloadSecureFile@1
             name: sshKey
             displayName: 'Download SSH private key'
@@ -78,11 +78,41 @@ stages:
             displayName: 'Set SSH key permissions'
 
           - script: |
+              AGENT_IP=$(curl -sf https://checkip.amazonaws.com)
+              echo "Agent IP: $AGENT_IP"
+              echo "##vso[task.setvariable variable=AGENT_IP]$AGENT_IP"
+              aws ec2 authorize-security-group-ingress \
+                --group-id $(frontendSG) \
+                --protocol tcp --port 22 --cidr "$AGENT_IP/32"
+              aws ec2 authorize-security-group-ingress \
+                --group-id $(backendSG) \
+                --protocol tcp --port 22 --cidr "$AGENT_IP/32"
+            displayName: 'Authorize agent IP in security groups'
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_DEFAULT_REGION: $(AWS_DEFAULT_REGION)
+
+          - script: |
               ansible all \
                 -i $(ansibleDirectory)/inventory/hosts.ini \
                 --private-key "$(sshKey.secureFilePath)" \
                 -m ansible.builtin.ping
             displayName: 'Ping all hosts'
+
+          - script: |
+              aws ec2 revoke-security-group-ingress \
+                --group-id $(frontendSG) \
+                --protocol tcp --port 22 --cidr "$(AGENT_IP)/32"
+              aws ec2 revoke-security-group-ingress \
+                --group-id $(backendSG) \
+                --protocol tcp --port 22 --cidr "$(AGENT_IP)/32"
+            displayName: 'Revoke agent IP from security groups'
+            condition: always()
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_DEFAULT_REGION: $(AWS_DEFAULT_REGION)
 
   # ── Stage 3: Deploy ────────────────────────────────────────────────────────
   # Run the full site.yml playbook.  Uses a deployment job so an Azure DevOps
@@ -123,11 +153,41 @@ stages:
                   displayName: 'Set SSH key permissions'
 
                 - script: |
+                    AGENT_IP=$(curl -sf https://checkip.amazonaws.com)
+                    echo "Agent IP: $AGENT_IP"
+                    echo "##vso[task.setvariable variable=AGENT_IP]$AGENT_IP"
+                    aws ec2 authorize-security-group-ingress \
+                      --group-id $(frontendSG) \
+                      --protocol tcp --port 22 --cidr "$AGENT_IP/32"
+                    aws ec2 authorize-security-group-ingress \
+                      --group-id $(backendSG) \
+                      --protocol tcp --port 22 --cidr "$AGENT_IP/32"
+                  displayName: 'Authorize agent IP in security groups'
+                  env:
+                    AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+                    AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+                    AWS_DEFAULT_REGION: $(AWS_DEFAULT_REGION)
+
+                - script: |
                     ansible-playbook $(ansibleDirectory)/site.yml \
                       -i $(ansibleDirectory)/inventory/hosts.ini \
                       --private-key "$(sshKey.secureFilePath)" \
                       --extra-vars "vault_db_password=$(DB_ADMIN_PASSWORD)"
                   displayName: 'Deploy EpicBook'
+
+                - script: |
+                    aws ec2 revoke-security-group-ingress \
+                      --group-id $(frontendSG) \
+                      --protocol tcp --port 22 --cidr "$(AGENT_IP)/32"
+                    aws ec2 revoke-security-group-ingress \
+                      --group-id $(backendSG) \
+                      --protocol tcp --port 22 --cidr "$(AGENT_IP)/32"
+                  displayName: 'Revoke agent IP from security groups'
+                  condition: always()
+                  env:
+                    AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+                    AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+                    AWS_DEFAULT_REGION: $(AWS_DEFAULT_REGION)
 
   # ── Stage 4: Verify ────────────────────────────────────────────────────────
   # Simple HTTP smoke test: confirm the frontend returns an HTML page that
