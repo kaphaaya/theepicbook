@@ -1,0 +1,60 @@
+---
+# The database role runs on the backend host after the backend role has started
+# the app (which triggers Sequelize sync and creates the tables).
+# This role installs the MySQL client and seeds reference data if the tables
+# are empty.
+
+- name: Install MySQL client
+  ansible.builtin.apt:
+    name: default-mysql-client
+    state: present
+
+# ── Author seeding ────────────────────────────────────────────────────────────
+
+- name: Check whether Author table has been seeded
+  ansible.builtin.command:
+    cmd: >
+      mysql -h {{ db_host }} -P {{ db_port }}
+      -u {{ db_username }} -p{{ vault_db_password }}
+      {{ db_name }} -N -e "SELECT COUNT(*) FROM Author;"
+  register: author_count
+  changed_when: false
+  no_log: true
+
+# The seed file references "USE bookstore;" — substitute the real DB name at
+# deploy time so no tracked file needs to be modified.
+- name: Seed Author data
+  ansible.builtin.shell:
+    cmd: >
+      sed 's/USE bookstore;/USE {{ db_name }};/'
+      /opt/epicbook/db/author_seed.sql |
+      mysql -h {{ db_host }} -P {{ db_port }}
+      -u {{ db_username }} -p{{ vault_db_password }}
+      {{ db_name }}
+  when: author_count.stdout | trim | int == 0
+  changed_when: true
+  no_log: true
+
+# ── Book seeding ──────────────────────────────────────────────────────────────
+
+- name: Check whether Book table has been seeded
+  ansible.builtin.command:
+    cmd: >
+      mysql -h {{ db_host }} -P {{ db_port }}
+      -u {{ db_username }} -p{{ vault_db_password }}
+      {{ db_name }} -N -e "SELECT COUNT(*) FROM Book;"
+  register: book_count
+  changed_when: false
+  no_log: true
+
+- name: Seed Book data
+  ansible.builtin.shell:
+    cmd: >
+      sed 's/USE bookstore;/USE {{ db_name }};/'
+      /opt/epicbook/db/books_seed.sql |
+      mysql -h {{ db_host }} -P {{ db_port }}
+      -u {{ db_username }} -p{{ vault_db_password }}
+      {{ db_name }}
+  when: book_count.stdout | trim | int == 0
+  changed_when: true
+  no_log: true

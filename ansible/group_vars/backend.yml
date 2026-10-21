@@ -1,0 +1,4 @@
+---
+# Group-specific variables for the backend group.
+# All shared infrastructure variables live in group_vars/all/vars.yml.
+# Secrets live in group_vars/all/vault.yml (gitignored).

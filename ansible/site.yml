@@ -1,0 +1,24 @@
+---
+# Play 1 — Common packages on every host (Node.js, git, curl)
+- name: Configure all servers
+  hosts: all
+  become: true
+  roles:
+    - common
+
+# Play 2 — Frontend: Nginx reverse proxy
+- name: Configure frontend (Nginx)
+  hosts: frontend
+  become: true
+  roles:
+    - frontend
+
+# Play 3 — Backend: deploy Node.js app, then seed the database
+# Roles run in order: backend starts the app (Sequelize creates tables),
+# database role seeds data once the app is confirmed listening on app_port.
+- name: Deploy application and seed database
+  hosts: backend
+  become: true
+  roles:
+    - backend
+    - database
