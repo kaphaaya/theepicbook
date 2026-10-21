@@ -1,19 +1,151 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
-- main
+  branches:
+    include:
+      - main
 
-pool:
-  vmImage: ubuntu-latest
+variables:
+  - group: epicbook-secrets   # provides DB_ADMIN_PASSWORD, DB_ADMIN_USERNAME
+  - name: ansibleDirectory
+    value: ansible
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+stages:
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+  # ── Stage 1: Validate ──────────────────────────────────────────────────────
+  # Install Ansible and required collections, then validate inventory parsing
+  # and playbook syntax.  No SSH connection required.
+  - stage: Validate
+    displayName: 'Validate'
+    jobs:
+      - job: ValidateJob
+        displayName: 'Inventory + syntax check'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - script: pip install --quiet ansible
+            displayName: 'Install Ansible'
+
+          - script: |
+              ansible-galaxy collection install \
+                -r $(ansibleDirectory)/requirements.yml \
+                --force
+            displayName: 'Install Ansible collections'
+
+          - script: |
+              ansible-inventory \
+                -i $(ansibleDirectory)/inventory/hosts.ini \
+                --list
+            displayName: 'Validate inventory'
+
+          # Pass a dummy vault_db_password so Ansible can render templates
+          # during the syntax check without a real secret.
+          - script: |
+              ansible-playbook $(ansibleDirectory)/site.yml \
+                -i $(ansibleDirectory)/inventory/hosts.ini \
+                --syntax-check \
+                --extra-vars "vault_db_password=syntax_check_placeholder"
+            displayName: 'Ansible syntax check'
+
+  # ── Stage 2: Connectivity ─────────────────────────────────────────────────
+  # Download the SSH private key from Azure DevOps Secure Files and verify
+  # that both EC2 hosts are reachable via Ansible ping.
+  - stage: Connectivity
+    displayName: 'Connectivity'
+    dependsOn: Validate
+    jobs:
+      - job: ConnectivityJob
+        displayName: 'SSH connectivity check'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - script: pip install --quiet ansible
+            displayName: 'Install Ansible'
+
+          # The SSH private key must be uploaded to Azure DevOps as a Secure File
+          # named 'epicbook_ssh_key.pem' (Project Settings → Pipelines → Library →
+          # Secure Files).  It is the private key matching the SSH_PUBLIC_KEY used
+          # by Terraform when provisioning the EC2 instances.
+          - task: DownloadSecureFile@1
+            name: sshKey
+            displayName: 'Download SSH private key'
+            inputs:
+              secureFile: 'epicbook_ssh_key.pem'
+
+          - script: chmod 600 $(sshKey.secureFilePath)
+            displayName: 'Set SSH key permissions'
+
+          - script: |
+              ansible all \
+                -i $(ansibleDirectory)/inventory/hosts.ini \
+                --private-key "$(sshKey.secureFilePath)" \
+                -m ansible.builtin.ping
+            displayName: 'Ping all hosts'
+
+  # ── Stage 3: Deploy ────────────────────────────────────────────────────────
+  # Run the full site.yml playbook.  Uses a deployment job so an Azure DevOps
+  # environment approval gate can be added when needed.
+  # DB_ADMIN_PASSWORD is injected as vault_db_password via --extra-vars;
+  # Azure DevOps masks it in logs because it is a secret variable.
+  - stage: Deploy
+    displayName: 'Deploy'
+    dependsOn: Connectivity
+    jobs:
+      - deployment: DeployJob
+        displayName: 'Run Ansible playbook'
+        pool:
+          vmImage: ubuntu-latest
+        environment: epicbook-app-approval
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - script: pip install --quiet ansible
+                  displayName: 'Install Ansible'
+
+                - script: |
+                    ansible-galaxy collection install \
+                      -r $(ansibleDirectory)/requirements.yml \
+                      --force
+                  displayName: 'Install Ansible collections'
+
+                - task: DownloadSecureFile@1
+                  name: sshKey
+                  displayName: 'Download SSH private key'
+                  inputs:
+                    secureFile: 'epicbook_ssh_key.pem'
+
+                - script: chmod 600 $(sshKey.secureFilePath)
+                  displayName: 'Set SSH key permissions'
+
+                - script: |
+                    ansible-playbook $(ansibleDirectory)/site.yml \
+                      -i $(ansibleDirectory)/inventory/hosts.ini \
+                      --private-key "$(sshKey.secureFilePath)" \
+                      --extra-vars "vault_db_password=$(DB_ADMIN_PASSWORD)"
+                  displayName: 'Deploy EpicBook'
+
+  # ── Stage 4: Verify ────────────────────────────────────────────────────────
+  # Simple HTTP smoke test: confirm the frontend returns an HTML page that
+  # contains the application title.
+  - stage: Verify
+    displayName: 'Verify'
+    dependsOn: Deploy
+    jobs:
+      - job: VerifyJob
+        displayName: 'HTTP smoke test'
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - script: |
+              echo "Waiting for application to be fully up..."
+              sleep 10
+              echo "Testing EpicBook at http://13.49.23.121/"
+              curl -fsSL --max-time 30 http://13.49.23.121/ \
+                | grep -i -E "epicbook|EpicBook|book" > /dev/null
+              echo "Smoke test passed — EpicBook frontend is responding."
+            displayName: 'Verify application is accessible'
