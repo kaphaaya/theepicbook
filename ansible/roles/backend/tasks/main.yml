@@ -1,0 +1,82 @@
+---
+# Wait for the RDS endpoint to be reachable before starting the app.
+# This gives a clear early failure if the database is not accessible.
+- name: Wait for RDS to be accessible
+  ansible.builtin.wait_for:
+    host: "{{ db_host }}"
+    port: "{{ db_port }}"
+    timeout: 120
+
+- name: Create EpicBook application directory
+  ansible.builtin.file:
+    path: /opt/epicbook
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"
+
+- name: Clone EpicBook repository
+  ansible.builtin.git:
+    repo: "{{ epicbook_repo }}"
+    dest: /opt/epicbook
+    version: main
+    force: true
+  become_user: ubuntu
+
+- name: Install Node.js dependencies
+  community.general.npm:
+    path: /opt/epicbook
+    state: present
+  become_user: ubuntu
+
+- name: Install PM2 globally
+  community.general.npm:
+    name: pm2
+    global: true
+    state: present
+
+# Deploy the PM2 ecosystem config with DB credentials.
+# File mode 0600 — readable only by the ubuntu user.
+- name: Deploy PM2 ecosystem configuration
+  ansible.builtin.template:
+    src: ecosystem.config.js.j2
+    dest: /opt/epicbook/ecosystem.config.js
+    owner: ubuntu
+    group: ubuntu
+    mode: "0600"
+  no_log: true
+  notify: restart epicbook
+
+# Idempotent start: reload if already running, start fresh otherwise.
+- name: Start or reload EpicBook with PM2
+  ansible.builtin.shell:
+    cmd: pm2 reload epicbook 2>/dev/null || pm2 start ecosystem.config.js
+    chdir: /opt/epicbook
+  become_user: ubuntu
+  changed_when: true
+
+- name: Save PM2 process list for boot persistence
+  ansible.builtin.command:
+    cmd: pm2 save
+  become_user: ubuntu
+  changed_when: true
+
+# Create the pm2-ubuntu.service systemd unit so the app survives reboots.
+- name: Check if PM2 systemd service already exists
+  ansible.builtin.stat:
+    path: /etc/systemd/system/pm2-ubuntu.service
+  register: pm2_service_stat
+
+- name: Configure PM2 to start on boot
+  ansible.builtin.command:
+    cmd: pm2 startup systemd -u ubuntu --hp /home/ubuntu
+  when: not pm2_service_stat.stat.exists
+  changed_when: true
+
+# Block until Sequelize sync() completes and the app is listening.
+# The database role relies on the tables being present before seeding.
+- name: Wait for EpicBook to be listening on port {{ app_port }}
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ app_port }}"
+    timeout: 60

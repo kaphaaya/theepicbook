@@ -1,0 +1,9 @@
+---
+# Copy this file to vault.yml (same directory), fill in the real value,
+# then encrypt it: ansible-vault encrypt ansible/group_vars/all/vault.yml
+#
+# vault.yml is gitignored and must never be committed to version control.
+# In the Azure DevOps pipeline, vault_db_password is injected via --extra-vars
+# from the DB_ADMIN_PASSWORD secret in the epicbook-secrets variable group.
+
+vault_db_password: "REPLACE_WITH_DB_ADMIN_PASSWORD"

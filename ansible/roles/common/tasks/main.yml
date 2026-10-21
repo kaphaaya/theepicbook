@@ -1,0 +1,28 @@
+---
+- name: Update apt package cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install prerequisite packages
+  ansible.builtin.apt:
+    name:
+      - git
+      - curl
+      - ca-certificates
+      - gnupg
+    state: present
+
+# Install Node.js 18 LTS via NodeSource to avoid the outdated Ubuntu apt version.
+- name: Configure NodeSource repository for Node.js 18
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+  args:
+    creates: /etc/apt/sources.list.d/nodesource.list
+  changed_when: false
+
+- name: Install Node.js 18
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: true

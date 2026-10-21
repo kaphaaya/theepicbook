@@ -1,0 +1,3 @@
+---
+# Group-specific variables for the frontend group.
+# All shared infrastructure variables live in group_vars/all/vars.yml.

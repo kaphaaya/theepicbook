@@ -1,0 +1,15 @@
+---
+# ── Infrastructure handoff values ─────────────────────────────────────────────
+# Update these after each Terraform run using the pipeline Outputs stage values.
+app_port: 8080
+db_port: 3306
+db_name: epicbook
+db_username: epicbookadmin
+db_host: epicbook-mysql.cxyoicmsiy4a.eu-north-1.rds.amazonaws.com
+
+# Private IP of the backend EC2 instance.
+# Used by the frontend Nginx config to proxy requests over the private network.
+backend_private_ip: 10.20.2.156
+
+# Application repository
+epicbook_repo: https://github.com/kaphaaya/theepicbook.git
