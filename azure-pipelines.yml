@@ -29,6 +29,14 @@ stages:
         steps:
           - checkout: self
 
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '18.x'
+            displayName: 'Use Node.js 18'
+
+          - script: npm ci
+            displayName: 'Validate npm dependencies'
+
           - script: pip install --quiet ansible
             displayName: 'Install Ansible'
 
