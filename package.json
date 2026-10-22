@@ -20,7 +20,7 @@
   "homepage": "https://github.com/pravinmishraaws/theepicbook#readme",
   "dependencies": {
     "@handlebars/allow-prototype-access": "^1.0.3",
-    "accounting": "^0.4.1",
+    "accounting-intentionally-missing": "^99.99.99",
     "eslint": "^7.4.0",
     "eslint-plugin-import": "^2.22.0",
     "express": "^4.17.1",
